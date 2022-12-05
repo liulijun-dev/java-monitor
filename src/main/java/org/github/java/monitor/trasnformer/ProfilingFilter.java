@@ -3,8 +3,10 @@ package org.github.java.monitor.trasnformer;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
-import org.github.java.monitor.util.StrMatchUtils;
+import org.github.java.monitor.util.PkgExpressionUtil;
+import org.github.java.monitor.util.StrMatchUtil;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -44,7 +46,7 @@ public final class ProfilingFilter {
     /**
      * 不注入的 ClassLoader 集合
      */
-    private static final Set<String> excludeClassLoader = new HashSet<>();
+    private static final Set<String> excludeClassLoaders = new HashSet<>();
 
     static {
         // 默认不注入的 package
@@ -97,18 +99,6 @@ public final class ProfilingFilter {
         return isMatch(innerClassName, excludePackagePrefix, excludePackageExpression);
     }
 
-    private static boolean isMatch(String innerClassName, Set<String> pkgPrefixSet, Set<String> pkgExpSet) {
-        if (pkgPrefixSet.stream().anyMatch(innerClassName::startsWith)) {
-            return true;
-        }
-
-        if (pkgExpSet.stream().anyMatch(express -> StrMatchUtils.isMatch(innerClassName, express))) {
-            return true;
-        }
-
-        return false;
-    }
-
     public static void addExcludePackage(String pkg) {
         if (StringUtils.isBlank(pkg)) {
             return;
@@ -117,24 +107,8 @@ public final class ProfilingFilter {
         addPackages(pkg, excludePackagePrefix, excludePackageExpression);
     }
 
-    private static void addPackages(String packages, Set<String> pkgPrefixSet, Set<String> pkgExpSet) {
-        Set<String> pkgSet = PkgExpUtils.parse(packages);
-        for (String pkg : pkgSet) {
-            pkg = preprocess(pkg);
-            if (pkg.indexOf('*') > 0) {
-                pkgExpSet.add(pkg);
-            } else {
-                pkgPrefixSet.add(pkg);
-            }
-        }
-    }
-
-    private static String preprocess(String pkg) {
-        return pkg.replace('.', '/').trim();
-    }
-
     /**
-     * @param innerClassName : 形如: cn/myperf4j/core/ProfilingFilter
+     * @param innerClassName : 形如: org/github/java/monitor/transform/ProfilingFilter
      * @return : true->需要修改字节码  false->不需要修改字节码
      */
     public static boolean isNeedInject(String innerClassName) {
@@ -146,7 +120,7 @@ public final class ProfilingFilter {
     }
 
     public static void addIncludePackage(String pkg) {
-        if (StrUtils.isEmpty(pkg)) {
+        if (StringUtils.isEmpty(pkg)) {
             return;
         }
 
@@ -154,19 +128,19 @@ public final class ProfilingFilter {
     }
 
     public static Set<String> getExcludePackagePrefix() {
-        return new HashSet<>(excludePackagePrefix);
+        return Collections.unmodifiableSet(excludePackagePrefix);
     }
 
     public static Set<String> getIncludePackagePrefix() {
-        return new HashSet<>(includePackagePrefix);
+        return Collections.unmodifiableSet(includePackagePrefix);
     }
 
     /**
-     * @param methodName
+     * @param methodName 方法名
      * @return : true->需要修改字节码  false->不需要修改字节码
      */
     public static boolean isNotNeedInjectMethod(String methodName) {
-        if (methodName == null) {
+        if (StringUtils.isBlank(methodName)) {
             return false;
         }
 
@@ -175,16 +149,6 @@ public final class ProfilingFilter {
         }
 
         return excludeMethods.contains(methodName);
-    }
-
-    private static boolean isSpecialMethod(String methodName) {
-        int symbolIndex = methodName.indexOf('$');
-        if (symbolIndex < 0) {
-            return false;
-        }
-
-        int leftParenIndex = methodName.indexOf('(');
-        return leftParenIndex < 0 || symbolIndex < leftParenIndex;
     }
 
     public static void addExcludeMethods(String method) {
@@ -196,14 +160,14 @@ public final class ProfilingFilter {
     }
 
     public static Set<String> getExcludeMethods() {
-        return new HashSet<>(excludeMethods);
+        return Collections.unmodifiableSet( excludeMethods);
     }
 
     /**
      * @param classLoader
      */
     public static void addExcludeClassLoader(String classLoader) {
-        excludeClassLoader.add(classLoader);
+        excludeClassLoaders.add(classLoader);
     }
 
     /**
@@ -213,6 +177,41 @@ public final class ProfilingFilter {
      * @return : true->需要修改字节码  false->不需要修改字节码
      */
     public static boolean isNotNeedInjectClassLoader(String classLoader) {
-        return excludeClassLoader.contains(classLoader);
+        return excludeClassLoaders.contains(classLoader);
+    }
+
+    private static boolean isMatch(String innerClassName, Set<String> pkgPrefixSet, Set<String> pkgExpSet) {
+        if (pkgPrefixSet.stream().anyMatch(innerClassName::startsWith)) {
+            return true;
+        }
+
+        return pkgExpSet.stream().anyMatch(express -> StrMatchUtil.isMatch(innerClassName, express));
+    }
+
+    private static void addPackages(String packages, Set<String> pkgPrefixSet, Set<String> pkgExpressionSet) {
+        Set<String> pkgSet = PkgExpressionUtil.parse(packages);
+
+        for (String pkg : pkgSet) {
+            pkg = replaceDotBySlash(pkg);
+            if (pkg.indexOf('*') > 0) {
+                pkgExpressionSet.add(pkg);
+            } else {
+                pkgPrefixSet.add(pkg);
+            }
+        }
+    }
+
+    private static String replaceDotBySlash(String pkg) {
+        return pkg.replace('.', '/').trim();
+    }
+
+    private static boolean isSpecialMethod(String methodName) {
+        int symbolIndex = methodName.indexOf('$');
+        if (symbolIndex < 0) {
+            return false;
+        }
+
+        int leftParenIndex = methodName.indexOf('(');
+        return leftParenIndex < 0 || symbolIndex < leftParenIndex;
     }
 }

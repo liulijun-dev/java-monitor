@@ -6,9 +6,9 @@ package org.github.java.monitor.util;
  * @author LiJun.Liu
  * @since 2022/12/5
  */
-public final class StrMatchUtils {
+public final class StrMatchUtil {
 
-    private StrMatchUtils() {
+    private StrMatchUtil() {
         //empty
     }
 
