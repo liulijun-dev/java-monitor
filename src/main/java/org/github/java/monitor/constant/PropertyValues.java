@@ -8,7 +8,7 @@ package org.github.java.monitor.constant;
  */
 public interface PropertyValues {
 
-    String DEFAULT_PRO_FILE = "/java-monitor/conf/java-monitor.properties";
+    String DEFAULT_PRO_FILE = "/java-monitor/data/conf/java-monitor.properties";
 
     interface LegacyValues {
 
@@ -31,7 +31,7 @@ public interface PropertyValues {
 
         String STDOUT_METRICS_FILE = "STDOUT";
 
-        String DEFAULT_METRICS_FILE = "/data/logs/MyPerf4J/metrics.log";
+        String DEFAULT_METRICS_FILE = "/java-monitor/data/logs/metrics.log";
 
         String NULL_FILE = "NULL";
 

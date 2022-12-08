@@ -2,8 +2,11 @@ package org.github.java.monitor.asm;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
+import org.github.java.monitor.asm.aop.ProfilingDynamicMethodAdvice;
+import org.github.java.monitor.asm.aop.ProfilingMethodNormalAdvice;
 import org.github.java.monitor.config.LevelMappingFilter;
 import org.github.java.monitor.config.ProfilingConfig;
+import org.github.java.monitor.trasnformer.ProfilingFilter;
 import org.github.java.monitor.util.TypeDescUtil;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.FieldVisitor;
@@ -13,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import static java.lang.String.format;
 import static org.objectweb.asm.Opcodes.ACC_ABSTRACT;
 import static org.objectweb.asm.Opcodes.ACC_BRIDGE;
 import static org.objectweb.asm.Opcodes.ACC_INTERFACE;
@@ -44,8 +48,8 @@ public class ProfilingClassVisitor extends ClassVisitor {
 
     private final List<String> fieldNames = new ArrayList<>();
 
-    public ProfilingClassVisitor(final ClassVisitor cv, String innerClassName) {
-        super(ASM9, cv);
+    public ProfilingClassVisitor(final ClassVisitor classVisitor, String innerClassName) {
+        super(ASM9, classVisitor);
         this.innerClassName = innerClassName;
         this.fullClassName = innerClassName.replace('/', '.');
         this.simpleClassName = TypeDescUtil.getSimpleClassName(innerClassName);
@@ -54,7 +58,7 @@ public class ProfilingClassVisitor extends ClassVisitor {
 
     @Override
     public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
-        log.debug(String.format("ProfilingClassVisitor.visit(%d, %d, %s, %s, %s, %s)",
+        log.debug(format("ProfilingClassVisitor.visit(%d, %d, %s, %s, %s, %s)",
             version, access, name, signature, superName, Arrays.toString(interfaces)));
         super.visit(version, access, name, signature, superName, interfaces);
         this.isInterface = (access & ACC_INTERFACE) != 0;
@@ -86,24 +90,24 @@ public class ProfilingClassVisitor extends ClassVisitor {
             return super.visitMethod(access, name, desc, signature, exceptions);
         }
 
-        String desc4Human = TypeDescUtils.getMethodParamsDesc(desc);
-        classMethodName = classMethodName + desc4Human;
-        if (ProfilingFilter.isNotNeedInjectMethod(classMethodName)) {
+        String desc4Human = TypeDescUtil.getMethodParamsDesc(desc);
+        String classMethodNameWithParameter = classMethodName + desc4Human;
+        if (ProfilingFilter.isNotNeedInjectMethod(classMethodNameWithParameter)) {
             return super.visitMethod(access, name, desc, signature, exceptions);
         }
 
-        MethodVisitor mv = cv.visitMethod(access, name, desc, signature, exceptions);
-        if (mv == null) {
+        MethodVisitor methodVisitor = cv.visitMethod(access, name, desc, signature, exceptions);
+        if (methodVisitor == null) {
             return null;
         }
-        Logger.debug("ProfilingClassVisitor.visitMethod(" + access + ", " + name + ", " + desc + ", "
-                + signature + ", " + Arrays.toString(exceptions) + "), innerClassName=" + innerClassName);
+        log.debug(format("ProfilingClassVisitor.visitMethod(%s, %s, %s, %s, %s), innerClassName=%s",
+            access, name, desc, signature, Arrays.toString(exceptions), innerClassName));
 
         if (isInvocationHandler && isInvokeMethod(name, desc)) {
-            return new ProfilingDynamicMethodVisitor(access, name, desc, mv);
+            return new ProfilingDynamicMethodAdvice(access, name, desc, methodVisitor);
         } else {
-            return new ProfilingMethodVisitor(access, name, desc, mv, innerClassName, fullClassName, simpleClassName,
-                    classLevel, desc4Human);
+            return new ProfilingMethodNormalAdvice(access, name, desc, methodVisitor,
+                innerClassName, fullClassName, simpleClassName, classLevel, desc4Human);
         }
     }
 

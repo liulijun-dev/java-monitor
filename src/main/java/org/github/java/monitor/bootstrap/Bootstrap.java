@@ -3,6 +3,7 @@ package org.github.java.monitor.bootstrap;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.github.java.monitor.config.MonitorProperties;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -36,7 +37,11 @@ public final class Bootstrap {
             properties.load(in);
 
             properties.put(PROPERTIES_FILE_DIR.key(), getConfigFileDir(configFilePath));
-            return MyProperties.initial(properties);
+
+            MonitorProperties monitorProperties = new MonitorProperties(properties);
+
+            ApplicationContext.addInstance(MonitorProperties.class, monitorProperties);
+            return true;
         } catch (IOException e) {
             log.error("Bootstrap.initProperties() fail", e);
         }

@@ -1,6 +1,7 @@
 package org.github.java.monitor.config;
 
 import org.apache.commons.lang3.StringUtils;
+import org.github.java.monitor.bootstrap.ApplicationContext;
 
 import static org.github.java.monitor.constant.PropertyKeys.Filter.CLASS_LOADERS_EXCLUDE;
 import static org.github.java.monitor.constant.PropertyKeys.Filter.METHODS_EXCLUDE;
@@ -25,6 +26,24 @@ public class FilterConfig {
     private String excludeMethods;
 
     private boolean excludePrivateMethod;
+
+    public static FilterConfig loadFilterConfig() {
+        MonitorProperties monitorProperties = ApplicationContext.getInstance(MonitorProperties.class);
+        assert monitorProperties != null;
+
+        final String includePackages = monitorProperties.getStr(PACKAGES_INCLUDE);
+        if (StringUtils.isBlank(includePackages)) {
+            throw new IllegalArgumentException(String.format("%s or %s is required", PACKAGES_INCLUDE.key(), PACKAGES_INCLUDE.legacyKey()));
+        }
+
+        final FilterConfig config = new FilterConfig();
+        config.includePackages(includePackages);
+        config.excludeClassLoaders(monitorProperties.getStr(CLASS_LOADERS_EXCLUDE));
+        config.excludePackages(monitorProperties.getStr(PACKAGES_EXCLUDE));
+        config.excludeMethods(monitorProperties.getStr(METHODS_EXCLUDE));
+        config.excludePrivateMethod(monitorProperties.getBoolean(METHODS_EXCLUDE_PRIVATE, true));
+        return config;
+    }
 
     public String excludeClassLoaders() {
         return excludeClassLoaders;
@@ -75,21 +94,5 @@ public class FilterConfig {
                 ", excludeMethods='" + excludeMethods + '\'' +
                 ", excludePrivateMethod=" + excludePrivateMethod +
                 '}';
-    }
-
-    public static FilterConfig loadFilterConfig() {
-        final String includePackages = getStr(PACKAGES_INCLUDE);
-        if (StringUtils.isBlank(includePackages)) {
-            throw new IllegalArgumentException(PACKAGES_INCLUDE.key() + " or " + PACKAGES_INCLUDE.legacyKey() +
-                    " is required!!!");
-        }
-
-        final FilterConfig config = new FilterConfig();
-        config.includePackages(includePackages);
-        config.excludeClassLoaders(getStr(CLASS_LOADERS_EXCLUDE));
-        config.excludePackages(getStr(PACKAGES_EXCLUDE));
-        config.excludeMethods(getStr(METHODS_EXCLUDE));
-        config.excludePrivateMethod(getBoolean(METHODS_EXCLUDE_PRIVATE, true));
-        return config;
     }
 }
