@@ -124,4 +124,8 @@ public final class MethodMetrics extends Metrics {
                 ", totalTimePercent=" + totalTimePercent +
                 '}';
     }
+
+    public static double[] getPercentiles() {
+        return TOP_PERCENTILE_ARR;
+    }
 }

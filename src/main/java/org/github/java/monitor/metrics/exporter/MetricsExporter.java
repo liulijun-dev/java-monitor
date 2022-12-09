@@ -1,6 +1,5 @@
 package org.github.java.monitor.metrics.exporter;
 
-import cn.myperf4j.base.metric.Metrics;
 import org.github.java.monitor.metrics.Metrics;
 
 /**

@@ -1,5 +1,7 @@
 package org.github.java.monitor.core.recorder;
 
+import org.github.java.monitor.core.buffer.LongBuf;
+
 /**
  * description
  *

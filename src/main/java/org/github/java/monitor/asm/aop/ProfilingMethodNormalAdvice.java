@@ -4,6 +4,7 @@ import org.github.java.monitor.config.MetricsConfig;
 import org.github.java.monitor.config.ProfilingConfig;
 import org.github.java.monitor.core.MethodTag;
 import org.github.java.monitor.core.MethodTagMaintainer;
+import org.github.java.monitor.core.recorder.ASMRecorderMaintainer;
 import org.github.java.monitor.core.recorder.AbstractRecorderMaintainer;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Type;

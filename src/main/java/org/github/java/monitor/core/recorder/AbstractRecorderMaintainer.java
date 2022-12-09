@@ -1,10 +1,17 @@
 package org.github.java.monitor.core.recorder;
 
+import lombok.extern.slf4j.Slf4j;
+import org.github.java.monitor.bootstrap.ExecutorManager;
 import org.github.java.monitor.config.ProfilingParams;
+import org.github.java.monitor.core.MethodTag;
 import org.github.java.monitor.core.MethodTagMaintainer;
+import org.github.java.monitor.metrics.MethodMetrics;
+import org.github.java.monitor.metrics.MethodMetricsCalculator;
+import org.github.java.monitor.metrics.MethodMetricsHistogram;
 import org.github.java.monitor.metrics.exporter.MethodMetricsExporter;
+import org.github.java.monitor.util.LogUtil;
+import org.github.java.monitor.util.ThreadUtil;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -12,9 +19,10 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static org.github.java.monitor.constant.PropertyKeys.Metrics.TIME_SLICE_METHOD;
+import static org.github.java.monitor.constant.PropertyKeys.Recorder.BACKUP_COUNT;
 import static org.github.java.monitor.constant.PropertyValues.Recorder.MAX_BACKUP_RECORDERS_COUNT;
 import static org.github.java.monitor.constant.PropertyValues.Recorder.MIN_BACKUP_RECORDERS_COUNT;
 import static org.github.java.monitor.core.MethodTagMaintainer.MAX_NUM;
@@ -25,7 +33,8 @@ import static org.github.java.monitor.core.MethodTagMaintainer.MAX_NUM;
  * @author LiJun.Liu
  * @since 2022/12/8
  */
-public abstract class AbstractRecorderMaintainer {
+@Slf4j
+public abstract class AbstractRecorderMaintainer implements Scheduler {
     private static final int MAX_DELAY_TASKS = 1024;
 
     private volatile boolean initialState;
@@ -47,9 +56,7 @@ public abstract class AbstractRecorderMaintainer {
         this.accurateMode = accurateMode;
         backupRecordersCnt = getFitBackupRecordersCnt(backupRecordersCnt);
 
-        if (!initRecorders(backupRecordersCnt)) {
-            return false;
-        }
+        initRecorders(backupRecordersCnt);
 
         if (!initBackgroundTask()) {
             return false;
@@ -67,29 +74,24 @@ public abstract class AbstractRecorderMaintainer {
         return backupRecordersCount;
     }
 
-    private boolean initRecorders(int backupRecordersCount) {
-        recordersList = new ArrayList<>(backupRecordersCount + 1);
+    private void initRecorders(int backupRecordersCount) {
         recordersList = IntStream.rangeClosed(0, backupRecordersCount)
             .mapToObj((a) -> new Recorders(new AtomicReferenceArray<>(MAX_NUM)))
             .collect(Collectors.toList());
-        for (int i = 0; i < backupRecordersCount + 1; ++i) {
-            recordersList.add(new Recorders(new AtomicReferenceArray<>(MAX_NUM)));
-        }
 
         curRecorders = recordersList.get(curIndex);
-        return true;
     }
 
     private boolean initBackgroundTask() {
         try {
             backgroundExecutor = new ScheduledThreadPoolExecutor(1,
-                newThreadFactory("MyPerf4J-BackgroundExecutor_"),
+                ThreadUtil.newThreadFactory("java-monitor-background-executor_"),
                 new ThreadPoolExecutor.DiscardOldestPolicy());
 
             ExecutorManager.addExecutorService(backgroundExecutor);
             return true;
         } catch (Exception e) {
-            Logger.error("RecorderMaintainer.initBackgroundTask()", e);
+            LogUtil.logMethodError("RecorderMaintainer.initBackgroundTask()", e);
         }
         return false;
     }
@@ -110,17 +112,18 @@ public abstract class AbstractRecorderMaintainer {
     }
 
     @Override
-    public void run(long lastTimeSliceStartTime, long millTimeSlice) {
+    public void run(long lastTimeSliceStartTime, long timeSliceInMill) {
         try {
             if (!initialState) {
-                Logger.warn("AbstractRecorderMaintainer.run(long, long): initialState is false!");
+                LogUtil.logMethodWarn("AbstractRecorderMaintainer.run",
+                    "initialState is false", lastTimeSliceStartTime, timeSliceInMill);
                 return;
             }
 
-            final Recorders lastRecorders = turnAroundRecorders(lastTimeSliceStartTime, millTimeSlice);
+            final Recorders lastRecorders = turnAroundRecorders(lastTimeSliceStartTime, timeSliceInMill);
             backgroundExecutor.schedule(new ExportMetricsTask(methodMetricsExporter, lastRecorders), 10, MILLISECONDS);
         } catch (Exception e) {
-            Logger.error("RecorderMaintainer.run(long, long) error", e);
+            LogUtil.logMethodError("AbstractRecorderMaintainer.run", e, lastTimeSliceStartTime, timeSliceInMill);
         } finally {
             tryDiscardDelayTask();
         }
@@ -131,13 +134,14 @@ public abstract class AbstractRecorderMaintainer {
         lastRecorders.setStartTime(lastTimeSliceStartTime);
         lastRecorders.setStopTime(lastTimeSliceStartTime + millTimeSlice);
         lastRecorders.setWriting(false);
+        //todo why init next recorders
         this.curRecorders = nextRecorders(lastTimeSliceStartTime, millTimeSlice);
         return lastRecorders;
     }
 
     private Recorders nextRecorders(long lastTimeSliceStartTime, long millTimeSlice) {
-        curIndex = getNextIdx(curIndex, recordersList.size());
-        Logger.debug("RecorderMaintainer.nextRecorders(long, long) curIndex=" + curIndex);
+        curIndex = getNextIdx();
+        log.debug("RecorderMaintainer.nextRecorders(long, long) curIndex=" + curIndex);
 
         final Recorders nextRecorders = recordersList.get(curIndex);
         nextRecorders.setStartTime(lastTimeSliceStartTime + millTimeSlice);
@@ -147,15 +151,15 @@ public abstract class AbstractRecorderMaintainer {
         return nextRecorders;
     }
 
-    private int getNextIdx(int idx, int maxIdx) {
-        return (idx + 1) % maxIdx;
+    private int getNextIdx() {
+        return (curIndex + 1) % recordersList.size();
     }
 
     private void tryDiscardDelayTask() {
         final BlockingQueue<Runnable> queue = backgroundExecutor.getQueue();
         if (queue.size() >= MAX_DELAY_TASKS) {
             queue.poll();
-            Logger.warn("RecorderMaintainer.tryDiscardDelayTask the backgroundExecutor delay task count reach " +
+            log.warn("RecorderMaintainer.tryDiscardDelayTask the backgroundExecutor delay task count reach " +
                 MAX_DELAY_TASKS + ", so discard oldest one!");
         }
     }
@@ -182,7 +186,7 @@ public abstract class AbstractRecorderMaintainer {
         @Override
         public void run() {
             if (lastRecorders.isWriting()) {
-                Logger.warn("ExportMetricsTask.run() the lastRecorders is writing! " +
+                log.warn("ExportMetricsTask.run() the lastRecorders is writing! " +
                     "Please increase `" + TIME_SLICE_METHOD + "` or `" + BACKUP_COUNT + "`!P1");
                 return;
             }
@@ -195,7 +199,7 @@ public abstract class AbstractRecorderMaintainer {
                 final int actualSize = methodTagMaintainer.getMethodTagCount();
                 for (int i = 0; i < actualSize; ++i) {
                     if (lastRecorders.isWriting()) {
-                        Logger.warn("ExportMetricsTask.run() the lastRecorders is writing! " +
+                        log.warn("ExportMetricsTask.run() the lastRecorders is writing! " +
                             "Please increase `" + TIME_SLICE_METHOD + "` or `" + BACKUP_COUNT + "`!P2");
                         break;
                     }
@@ -204,21 +208,21 @@ public abstract class AbstractRecorderMaintainer {
                     if (recorder == null) {
                         continue;
                     } else if (!recorder.hasRecord()) {
-                        recordNoneMetrics(recorder.getMethodTagId());
+                        MethodMetricsHistogram.recordNoneMetrics(recorder.getMethodTagId());
                         continue;
                     }
 
                     final MethodTag methodTag = methodTagMaintainer.getMethodTag(recorder.getMethodTagId());
-                    final MethodMetrics metrics = calMetrics(recorder, methodTag, epochStartMillis, epochEndMillis);
+                    final MethodMetrics metrics = MethodMetricsCalculator.calMetrics(recorder, methodTag, epochStartMillis, epochEndMillis);
                     MethodMetricsHistogram.recordMetrics(metrics);
                     metricsExporter.process(metrics, epochStartMillis, epochStartMillis, epochEndMillis);
                 }
             } catch (Throwable e) {
-                Logger.error("ExportMetricsTask.run() error", e);
+                log.error("ExportMetricsTask.run() error", e);
             } finally {
                 metricsExporter.afterProcess(epochStartMillis, epochStartMillis, epochEndMillis);
                 final long cost = System.currentTimeMillis() - start;
-                Logger.debug("ExportMetricsTask.run() finished!!! cost: " + cost + "ms");
+                log.debug("ExportMetricsTask.run() finished!!! cost: " + cost + "ms");
             }
         }
     }
