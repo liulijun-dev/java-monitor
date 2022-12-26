@@ -2,6 +2,7 @@ package org.github.java.monitor.asm.aop;
 
 import org.github.java.monitor.config.MetricsConfig;
 import org.github.java.monitor.config.ProfilingConfig;
+import org.github.java.monitor.config.RecorderConfig;
 import org.github.java.monitor.core.MethodTag;
 import org.github.java.monitor.core.MethodTagMaintainer;
 import org.github.java.monitor.core.recorder.ASMRecorderMaintainer;

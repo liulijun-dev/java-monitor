@@ -3,6 +3,9 @@ package org.github.java.monitor.util;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -26,7 +29,7 @@ public final class PkgExpressionUtil {
     public static Set<String> parse(String expStr) {
         int leftIdx = expStr.indexOf('[');
         if (leftIdx < 0) {
-            return Set.of(expStr);
+            return new HashSet<>(Collections.singletonList(expStr));
         }
 
         int rightIdx = expStr.indexOf(']', leftIdx);
@@ -38,7 +41,7 @@ public final class PkgExpressionUtil {
         String suffixStr = rightIdx + 1 < expStr.length() ? expStr.substring(rightIdx + 1) : "";
 
         String elementsStr = expStr.substring(leftIdx + 1, rightIdx);
-        List<String> elements = StrUtil.splitAsList(elementsStr, ",");
+        List<String> elements = Arrays.asList(elementsStr.split( ","));
 
         return elements.stream()
             .map(element -> prefixStr.concat(element).concat(suffixStr))
